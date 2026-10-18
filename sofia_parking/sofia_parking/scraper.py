@@ -92,16 +92,31 @@ def parse_list_page(html: str) -> list[dict]:
                 "floor": floor,
                 "snippet": snippet,
                 "seller": _text(item.select_one("div.seller div.name")),
+                "photos": photo_urls(item, lid),
             }
         )
     return cards
+
+
+def photo_urls(soup, lid: str) -> list[str]:
+    """Thumbnail URLs of a listing's photos. Their file names contain the listing id, which tells them
+    apart from icons and from photos of other (recommended) listings; full-size ones live under /big/."""
+    photos = []
+    for img in soup.select("img"):
+        for src in (img.get("data-src"), img.get("src")):
+            if not src or "photosimotbg" not in src or lid not in src:
+                continue
+            src = re.sub(r"/+big/", "/", "https:" + src if src.startswith("//") else src)
+            if src not in photos:
+                photos.append(src)
+    return photos
 
 
 def has_next_page(html: str, page: int) -> bool:
     return re.search(rf'href="[^"]*/p-{page + 1}"', html) is not None
 
 
-def parse_detail_page(html: str) -> dict:
+def parse_detail_page(html: str, lid: str = "") -> dict:
     soup = BeautifulSoup(html, "html.parser")
     params = {}
     for div in soup.select("div.adParams > div"):
@@ -125,6 +140,7 @@ def parse_detail_page(html: str) -> dict:
         "params": params,
         "modified_text": modified,
         "views": views,
+        "photos": photo_urls(soup, lid) if lid else [],
     }
 
 
@@ -149,6 +165,8 @@ class Client:
             follow_redirects=True,
         )
         self._last = 0.0
+        self.requests = 0
+        self.bytes = 0
 
     def get(self, url: str) -> str:
         wait = random.uniform(*self.delay) - (time.monotonic() - self._last)
@@ -156,8 +174,10 @@ class Client:
             time.sleep(wait)
         for attempt in range(3):
             try:
+                self.requests += 1
                 r = self.http.get(url)
                 self._last = time.monotonic()
+                self.bytes += len(r.content)
                 if r.status_code in (429, 503):
                     raise httpx.HTTPStatusError("throttled", request=r.request, response=r)
                 r.raise_for_status()
@@ -203,11 +223,12 @@ def scrape(conn, cfg: dict) -> dict:
             stats["new"] += 1
             conn.execute(
                 """INSERT INTO listings (id, url, kind, price_eur, price_text, price_trend, vat_note,
-                       area_m2, floor, street_hint, snippet, seller, card_hash, first_seen, last_seen, active)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)""",
+                       area_m2, floor, street_hint, snippet, seller, card_hash, first_seen, last_seen, active,
+                       photos)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)""",
                 (c["id"], c["url"], c["kind"], c["price_eur"], c["price_text"], c["price_trend"],
                  c["vat_note"], c["area_m2"], c["floor"], c["street_hint"], c["snippet"], c["seller"],
-                 h, ts, ts),
+                 h, ts, ts, json.dumps(c["photos"])),
             )
             conn.execute("INSERT INTO price_history VALUES (?,?,?)", (c["id"], c["price_eur"], ts))
             to_fetch.append(c)
@@ -221,10 +242,12 @@ def scrape(conn, cfg: dict) -> dict:
         conn.execute(
             """UPDATE listings SET url=?, kind=?, price_eur=?, price_text=?, price_trend=?, vat_note=?,
                    area_m2=COALESCE(area_m2, ?), floor=COALESCE(NULLIF(floor, ''), ?), street_hint=?,
-                   snippet=?, seller=?, card_hash=?, last_seen=?, active=1
+                   snippet=?, seller=?, card_hash=?, last_seen=?, active=1,
+                   photos=COALESCE(NULLIF(photos, '[]'), ?)
                WHERE id=?""",
             (c["url"], c["kind"], c["price_eur"], c["price_text"], c["price_trend"], c["vat_note"],
-             c["area_m2"], c["floor"], c["street_hint"], c["snippet"], c["seller"], h, ts, c["id"]),
+             c["area_m2"], c["floor"], c["street_hint"], c["snippet"], c["seller"], h, ts,
+             json.dumps(c["photos"]), c["id"]),
         )
         if changed or not row["detail_fetched_at"] or row["detail_fetched_at"] < refresh_before:
             to_fetch.append(c)
@@ -241,19 +264,22 @@ def scrape(conn, cfg: dict) -> dict:
 
     for c in to_fetch:
         try:
-            d = parse_detail_page(client.get(c["url"]))
+            d = parse_detail_page(client.get(c["url"]), c["id"])
         except httpx.HTTPError as e:
             log.warning("detail %s failed: %s", c["id"], e)
             continue
         conn.execute(
             """UPDATE listings SET description=?, features=?, modified_text=?, views=?,
+                   photos=COALESCE(NULLIF(?, '[]'), photos),
                    area_m2=COALESCE(?, area_m2), floor=COALESCE(NULLIF(?, ''), floor),
                    street_hint=COALESCE(NULLIF(?, ''), street_hint), detail_fetched_at=?
                WHERE id=?""",
             (d["description"], json.dumps(d["features"], ensure_ascii=False), d["modified_text"],
-             d["views"], d["area_m2"], d["floor"], d["street"], now(), c["id"]),
+             d["views"], json.dumps(d["photos"]), d["area_m2"], d["floor"], d["street"], now(), c["id"]),
         )
         conn.commit()
         stats["details"] += 1
         log.info("detail %s fetched", c["id"])
+    stats["requests"] = client.requests
+    stats["kb"] = round(client.bytes / 1024)
     return stats

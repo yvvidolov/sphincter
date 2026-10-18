@@ -45,6 +45,8 @@ DEFAULTS = {
         "weight_distance": 0.6,
         "weight_price": 0.3,
         "weight_confidence": 0.1,
+        # Listings posted/edited on imot.bg within this many days are marked as fresh.
+        "fresh_days": 7,
     },
     "output": {
         "db_path": "data/parking.sqlite",

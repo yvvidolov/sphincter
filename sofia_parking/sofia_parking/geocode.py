@@ -88,6 +88,8 @@ class Geocoder:
         self.bbox = g["bbox"]  # s, w, n, e
         self.http = httpx.Client(headers={"User-Agent": g["user_agent"]}, timeout=60)
         self._last = 0.0
+        self.requests = 0
+        self.cache_hits = 0
 
     def _throttle(self, seconds: float = 1.1):
         wait = seconds - (time.monotonic() - self._last)
@@ -104,8 +106,10 @@ class Geocoder:
         key = "nominatim:" + json.dumps(params, ensure_ascii=False, sort_keys=True)
         cached = cache_get(self.conn, key)
         if cached is not None:
+            self.cache_hits += 1
             return cached
         self._throttle()
+        self.requests += 1
         r = self.http.get(f"{self.cfg['nominatim_url']}/search", params=params)
         r.raise_for_status()
         data = r.json()
@@ -116,6 +120,7 @@ class Geocoder:
         key = "overpass:" + hashlib.sha1(query.encode()).hexdigest()
         cached = cache_get(self.conn, key)
         if cached is not None:
+            self.cache_hits += 1
             return cached
         urls = self.cfg["overpass_url"]
         urls = [urls] if isinstance(urls, str) else urls
@@ -123,6 +128,7 @@ class Geocoder:
         for attempt in range(2):
             for url in urls:
                 self._throttle(2.0)
+                self.requests += 1
                 try:
                     r = self.http.post(url, data={"data": query})
                     r.raise_for_status()
@@ -360,4 +366,6 @@ def geocode_all(conn, cfg: dict, force: bool = False) -> dict:
              label, confidence, dist_exp, dist_min, now()),
         )
         conn.commit()
+    stats["requests"] = geo.requests
+    stats["cache_hits"] = geo.cache_hits
     return stats

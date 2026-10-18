@@ -91,7 +91,7 @@ def parse_json(text: str) -> dict:
     return obj
 
 
-def call_litellm(cfg: dict, system: str, prompt: str) -> str:
+def call_litellm(cfg: dict, system: str, prompt: str) -> tuple[str, dict]:
     import litellm
 
     llm = cfg["llm"]
@@ -106,11 +106,25 @@ def call_litellm(cfg: dict, system: str, prompt: str) -> str:
         temperature=llm["temperature"],
         **kwargs,
     )
-    return resp.choices[0].message.content
+    try:
+        cost = litellm.completion_cost(completion_response=resp)
+    except Exception:  # unknown model pricing, e.g. behind a proxy
+        cost = 0.0
+    usage = {"in": resp.usage.prompt_tokens, "out": resp.usage.completion_tokens, "cost": cost}
+    return resp.choices[0].message.content, usage
 
 
-def call_claude_cli(cfg: dict, system: str, prompt: str) -> str:
-    return run_claude_cli(cfg, system, prompt)["result"]
+def call_claude_cli(cfg: dict, system: str, prompt: str) -> tuple[str, dict]:
+    out = run_claude_cli(cfg, system, prompt)
+    u = out.get("usage") or {}
+    usage = {
+        "in": u.get("input_tokens", 0) + u.get("cache_creation_input_tokens", 0)
+        + u.get("cache_read_input_tokens", 0),
+        "out": u.get("output_tokens", 0),
+        # API-equivalent cost; a subscription isn't billed per call.
+        "cost": out.get("total_cost_usd") or 0.0,
+    }
+    return out["result"], usage
 
 
 def run_claude_cli(cfg: dict, system: str, prompt: str) -> dict:
@@ -148,7 +162,7 @@ def model_name(cfg: dict) -> str:
     return f"claude-cli:{llm['claude_model']}" + (":lean" if llm.get("claude_lean") else "")
 
 
-def complete(cfg: dict, system: str, prompt: str) -> str:
+def complete(cfg: dict, system: str, prompt: str) -> tuple[str, dict]:
     if cfg["llm"]["backend"] == "claude-cli":
         return call_claude_cli(cfg, system, prompt)
     return call_litellm(cfg, system, prompt)
@@ -158,13 +172,15 @@ def build_prompt(row) -> str:
     return INSTRUCTIONS.format(listing=json.dumps(listing_payload(row), ensure_ascii=False, indent=1))
 
 
-def extract_one(cfg: dict, row) -> dict:
-    return parse_json(complete(cfg, SYSTEM, build_prompt(row)))
+def extract_one(cfg: dict, row) -> tuple[dict, dict]:
+    text, usage = complete(cfg, SYSTEM, build_prompt(row))
+    return parse_json(text), usage
 
 
 def extract_all(conn, cfg: dict, force: bool = False) -> dict:
     model = model_name(cfg)
-    stats = {"extracted": 0, "skipped": 0, "failed": 0}
+    stats = {"extracted": 0, "skipped": 0, "failed": 0, "llm_calls": 0, "tokens_in": 0, "tokens_out": 0,
+             "cost_usd": 0.0}
     todo = []
     for row in conn.execute("SELECT * FROM listings WHERE active = 1").fetchall():
         h = input_hash(listing_payload(row), model)
@@ -180,12 +196,16 @@ def extract_all(conn, cfg: dict, force: bool = False) -> dict:
         futures = {pool.submit(extract_one, cfg, row): (row, h) for row, h in todo}
         for fut in as_completed(futures):
             row, h = futures[fut]
+            stats["llm_calls"] += 1
             try:
-                data = fut.result()
+                data, usage = fut.result()
             except Exception as e:  # keep going; the next run retries
                 log.warning("extraction failed for %s: %s", row["id"], e)
                 stats["failed"] += 1
                 continue
+            stats["tokens_in"] += usage["in"]
+            stats["tokens_out"] += usage["out"]
+            stats["cost_usd"] = round(stats["cost_usd"] + usage["cost"], 4)
             _store(conn, row, h, model, data)
             stats["extracted"] += 1
     return stats

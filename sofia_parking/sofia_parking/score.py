@@ -1,10 +1,25 @@
 """Rank active listings by distance to the target, price and location confidence."""
 
 import json
+import re
 from datetime import datetime, timedelta, timezone
 
 # Every listing is in the "Център" district, so an unknown location is still reasonably close.
 UNKNOWN_DISTANCE_SCORE = 0.25
+
+MONTHS = {m: i for i, m in enumerate(
+    ("януари", "февруари", "март", "април", "май", "юни", "юли", "август", "септември", "октомври",
+     "ноември", "декември"), 1)}
+SITE_DATE_RE = re.compile(r"(Публикувана|Коригирана) в (\d+):(\d+) на (\d+) (\S+), (\d{4})")
+
+
+def site_date(text: str | None) -> tuple[datetime | None, str | None]:
+    """'Коригирана в 10:55 на 9 октомври, 2026 год.' -> (datetime, "edited")."""
+    m = SITE_DATE_RE.search(text or "")
+    if not m or m[5] not in MONTHS:
+        return None, None
+    dt = datetime(int(m[6]), MONTHS[m[5]], int(m[4]), int(m[2]), int(m[3]))
+    return dt, "posted" if m[1] == "Публикувана" else "edited"
 
 
 def ranked(conn, cfg: dict) -> list[dict]:
@@ -19,7 +34,10 @@ def ranked(conn, cfg: dict) -> list[dict]:
            WHERE l.active = 1"""
     ).fetchall()
     prices = sorted(r["price_eur"] for r in rows if r["price_eur"])
-    recent = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+    now = datetime.now(timezone.utc)
+    recent = (now - timedelta(days=3)).isoformat()
+    # Listings from the very first scan aren't "new" to us, just to the database.
+    first_scan = conn.execute("SELECT MIN(first_seen) FROM listings").fetchone()[0]
 
     out = []
     for r in rows:
@@ -53,10 +71,19 @@ def ranked(conn, cfg: dict) -> list[dict]:
             "SELECT price_eur FROM price_history WHERE listing_id = ? ORDER BY seen_at", (r["id"],)
         ).fetchall()
         hist = [h["price_eur"] for h in history if h["price_eur"]]
+        listed_at, listed_how = site_date(r["modified_text"])
+        if listed_at is None:
+            listed_at = datetime.fromisoformat(r["first_seen"]).replace(tzinfo=None)
+            listed_how = "first seen"
+        age_days = (now.replace(tzinfo=None) - listed_at).total_seconds() / 86400
         item.update(
             score=round(score, 1),
             distance_m=d,
-            is_new=r["first_seen"] >= recent,
+            is_new=r["first_seen"] >= recent and r["first_seen"] > first_scan,
+            listed_at=listed_at,
+            listed_how=listed_how,
+            age_days=age_days,
+            is_fresh=age_days <= sc["fresh_days"],
             price_drop=(hist[0] - hist[-1]) if len(hist) > 1 and hist[-1] < hist[0] else 0,
         )
         out.append(item)

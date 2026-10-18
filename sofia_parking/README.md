@@ -35,6 +35,8 @@ LLM itself would be pretty bad at locations, so we need to include some sort of 
 
 # Usage
 ```bash
+./run.sh                                  # creates/repairs .venv if needed, then `-v run`
+# or manually:
 python3 -m venv .venv && .venv/bin/pip install -e .
 cp config.example.toml config.toml        # set [target] address, LLM backend/model
 .venv/bin/sofia-parking -v run            # scrape + extract + geocode + map + report
@@ -50,7 +52,7 @@ LLM backends (`[llm]` in config.toml):
 
 Daily run (cron):
 ```
-17 7 * * * cd /path/to/sofia_parking && .venv/bin/sofia-parking run >> data/run.log 2>&1
+17 7 * * * /path/to/sofia_parking/run.sh >> /path/to/sofia_parking/data/run.log 2>&1
 ```
 
 # claude-cli lean mode (`claude_lean = true`)

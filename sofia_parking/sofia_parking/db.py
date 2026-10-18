@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS listings (
     description TEXT,
     features TEXT,             -- JSON list
     modified_text TEXT,
-    views INTEGER
+    views INTEGER,
+    photos TEXT                -- JSON list of photo URLs (list-card thumbnails)
 );
 
 CREATE TABLE IF NOT EXISTS price_history (
@@ -75,6 +76,10 @@ def connect(path: str | Path) -> sqlite3.Connection:
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    # Columns added after the first release.
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(listings)")}
+    if "photos" not in cols:
+        conn.execute("ALTER TABLE listings ADD COLUMN photos TEXT")
     return conn
 
 
