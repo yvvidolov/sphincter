@@ -112,35 +112,55 @@ def item_json(rank: int, it: dict) -> dict:
 
 CSS = """
 <style>
-.sp-side{position:fixed;top:10px;right:10px;bottom:10px;width:min(430px,calc(100vw - 20px));z-index:9999;
+.sp-side{position:fixed;top:10px;left:10px;bottom:10px;width:min(430px,calc(100vw - 20px));z-index:9999;
   display:flex;flex-direction:column;background:#fff;border-radius:6px;box-shadow:0 1px 6px rgba(0,0,0,.3);
   font:12px/1.35 sans-serif;color:#222}
-.sp-head{padding:8px;border-bottom:1px solid #ddd;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.sp-head{padding:8px;border-bottom:1px solid #ddd;display:flex;gap:6px 10px;align-items:center;flex-wrap:wrap}
 .sp-list{overflow:auto;flex:1}
 .sp-row{display:grid;grid-template-columns:22px 26px 1fr auto;gap:2px 6px;padding:5px 8px;
-  border-bottom:1px solid #eee;cursor:pointer}
+  border-bottom:1px solid #eee;cursor:pointer;position:relative}
 .sp-row:hover,.sp-row.hl{background:#fff4c2}
 .sp-row.sel{background:#ffe680}
 .sp-row.unloc{opacity:.7}
+.sp-row.hidden{opacity:.45;background:repeating-linear-gradient(45deg,#fff,#fff 6px,#f2f2f2 6px,#f2f2f2 12px)}
 .sp-row .rk{color:#666}
 .sp-row .sc{font-weight:bold}
 .sp-row .addr{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sp-row .sub{grid-column:3/5;color:#555}
 .sp-row .dt{color:#666;text-align:right;white-space:nowrap}
+.sp-row .hide{position:absolute;right:6px;bottom:4px;display:none;font-size:11px;padding:1px 6px;cursor:pointer;
+  border:1px solid #bbb;border-radius:3px;background:#fff}
+.sp-row:hover .hide{display:block}
 .sp-badge{display:inline-block;padding:0 4px;border-radius:3px;font-size:10px;font-weight:bold;color:#fff;
   background:#1a9850;margin-left:3px}
 .sp-badge.fresh{background:#7b3294}
-.sp-detail{border-bottom:2px solid #333;max-height:55%;overflow:auto;padding:8px;display:none;background:#fafafa}
-.sp-detail.open{display:block}
-.sp-detail .close{float:right;cursor:pointer;font-size:16px;line-height:1;border:0;background:none}
-.sp-photos{display:flex;gap:4px;overflow-x:auto;margin-top:6px}
-.sp-photos img{height:150px;border-radius:3px;border:1px solid #ccc;background:#eee}
-.sp-detail .desc{white-space:pre-wrap;margin-top:6px;padding:6px;background:#fff;border:1px solid #ddd}
+.sp-badge.hid{background:#777}
+/* List on the left, detail on the right, so the middle of the map stays visible. */
+.leaflet-top.leaflet-left,.leaflet-bottom.leaflet-left{left:calc(min(430px,100vw - 20px) + 10px)}
+.sp-detail{position:fixed;top:10px;bottom:10px;right:10px;width:min(520px,calc(100vw - 480px));z-index:9999;display:none;flex-direction:column;background:#fff;
+  border-radius:6px;box-shadow:0 1px 8px rgba(0,0,0,.35);font:14px/1.5 sans-serif;color:#222}
+.sp-detail.open{display:flex}
+.sp-dhead{display:flex;align-items:flex-start;gap:8px;padding:10px 12px;border-bottom:1px solid #ddd}
+.sp-dhead .title{flex:1;font-size:17px;font-weight:bold;line-height:1.3}
+.sp-dhead .title small{display:block;font-size:13px;font-weight:normal;color:#555}
+.sp-btn{font:13px sans-serif;padding:5px 10px;border:1px solid #bbb;border-radius:4px;background:#fff;
+  cursor:pointer;color:#222;text-decoration:none;white-space:nowrap}
+.sp-btn:hover{background:#f0f0f0}
+.sp-btn.close{font-size:20px;line-height:1;padding:4px 11px}
+.sp-dbody{overflow:auto;padding:10px 12px 14px}
+.sp-facts{color:#444;margin-bottom:8px}
+.sp-photos{display:flex;gap:6px;overflow-x:auto;margin-bottom:10px}
+.sp-photos img{height:200px;border-radius:4px;border:1px solid #ccc;background:#eee}
+.sp-desc{white-space:pre-wrap;font-size:15px;line-height:1.6}
+.sp-ai{margin-top:14px;padding:8px 10px;border-left:3px solid #9aa;background:#f6f8f8;color:#555;font-size:12.5px}
+.sp-ai b{color:#333}
 .sp-pin{width:26px;height:26px;border-radius:50%;border:2px solid #222;color:#000;font:bold 11px/22px sans-serif;
   text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.5);transition:transform .1s}
 .sp-pin.fresh{border:3px solid #7b3294;line-height:20px}
 .sp-pin.hl{transform:scale(1.45);box-shadow:0 0 0 3px #ffd400,0 1px 4px rgba(0,0,0,.6)}
-.sp-pin.dim{opacity:.25}
+@media (max-width:1000px){
+  .sp-detail{left:10px;right:10px;width:auto;top:auto;height:60vh;z-index:10000}
+}
 </style>
 """
 
@@ -152,19 +172,33 @@ PANEL = """
       <option value="score">score</option><option value="date">newest</option>
       <option value="price">price</option><option value="dist">distance</option>
     </select></label>
+    <label>within <select id="sp-dist">
+      <option value="">any</option><option value="500">0.5 km</option><option value="1000">1 km</option>
+      <option value="1500">1.5 km</option><option value="2000">2 km</option>
+    </select></label>
     <label><input type="checkbox" id="sp-fresh"> only fresh (&le; __FRESH__ d)</label>
+    <label><input type="checkbox" id="sp-showhidden"> show hidden (<span id="sp-nhidden">0</span>)</label>
   </div>
-  <div class="sp-detail" id="sp-detail"></div>
   <div class="sp-list" id="sp-list"></div>
 </div>
+<div class="sp-detail" id="sp-detail"></div>
 """
 
 JS = r"""
 window.addEventListener("DOMContentLoaded", function () {
   const map = __MAP__;
   const DATA = __DATA__;
-  const byId = {};
+  const STORE = "sofia-parking:";
   let selected = null;
+
+  // Hidden listings and view settings live in this browser's localStorage (survives map regeneration).
+  function load(key, fallback) {
+    try { return JSON.parse(localStorage.getItem(STORE + key)) ?? fallback; } catch (e) { return fallback; }
+  }
+  function save(key, value) {
+    try { localStorage.setItem(STORE + key, JSON.stringify(value)); } catch (e) { /* private mode etc. */ }
+  }
+  const hidden = new Set(load("hidden", []));
 
   function el(tag, cls, text) {
     const e = document.createElement(tag);
@@ -180,12 +214,11 @@ window.addEventListener("DOMContentLoaded", function () {
   map.createPane("sp-street").style.zIndex = 395;
 
   DATA.forEach(it => {
-    byId[it.id] = it;
     if (it.lat == null) return;
-    const accStyle = {pane: "sp-acc", color: it.color, weight: 1, opacity: .5, fillColor: it.color, fillOpacity: .1,
-                      interactive: false};
-    if (it.ellipse) it.acc = L.polygon(it.ellipse, accStyle).addTo(map);
-    else if (it.radius > 50) it.acc = L.circle([it.lat, it.lon], {radius: it.radius, ...accStyle}).addTo(map);
+    const accStyle = {pane: "sp-acc", color: it.color, weight: 1, opacity: .5, fillColor: it.color,
+                      fillOpacity: .1, interactive: false};
+    if (it.ellipse) it.acc = L.polygon(it.ellipse, accStyle);
+    else if (it.radius > 50) it.acc = L.circle([it.lat, it.lon], {radius: it.radius, ...accStyle});
     if (it.lines) it.street = L.polyline(it.lines, {pane: "sp-street", color: it.color, weight: 7, opacity: .85,
                                                    interactive: false});
     const icon = L.divIcon({
@@ -196,19 +229,30 @@ window.addEventListener("DOMContentLoaded", function () {
       .bindTooltip(`#${it.rank} ${it.priceText} · ${it.address}`, {direction: "top", offset: [0, -14]})
       .on("mouseover", () => highlight(it, true))
       .on("mouseout", () => highlight(it, false))
-      .on("click", () => select(it, false))
-      .addTo(map);
+      .on("click", () => toggle(it, false));
   });
+
+  function setOnMap(it, on) {
+    for (const layer of [it.marker, it.acc]) {
+      if (!layer) continue;
+      if (on && !map.hasLayer(layer)) layer.addTo(map);
+      if (!on && map.hasLayer(layer)) layer.remove();
+    }
+    if (!on && it.street) it.street.remove();
+  }
 
   function highlight(it, on) {
     on = on || it === selected;
     const pin = it.marker && it.marker.getElement() && it.marker.getElement().firstChild;
     if (pin) pin.classList.toggle("hl", on);
     if (it.marker) it.marker.setZIndexOffset(on ? 5000 : 1000 - it.rank);
-    if (it.street) on ? it.street.addTo(map) : it.street.remove();
+    if (it.street) on && map.hasLayer(it.marker) ? it.street.addTo(map) : it.street.remove();
     if (it.acc) it.acc.setStyle({weight: on ? 3 : 1, opacity: on ? 1 : .5, fillOpacity: on ? .25 : .1});
     if (it.row) it.row.classList.toggle("hl", on);
   }
+
+  // Clicking the selected listing again, the close button, Esc or an empty spot on the map deselects.
+  function toggle(it, pan) { select(it === selected ? null : it, pan); }
 
   function select(it, pan) {
     const prev = selected;
@@ -217,74 +261,122 @@ window.addEventListener("DOMContentLoaded", function () {
     if (!it) { detail.classList.remove("open"); return; }
     highlight(it, true);
     if (it.row) { it.row.classList.add("sel"); it.row.scrollIntoView({block: "nearest"}); }
-    if (pan && it.lat != null) {
-      const b = it.ellipse ? L.latLngBounds(it.ellipse)
-              : it.radius ? L.latLng(it.lat, it.lon).toBounds(it.radius * 2) : null;
-      b ? map.fitBounds(b, {maxZoom: 17, paddingBottomRight: [450, 0]}) : map.panTo([it.lat, it.lon]);
-    }
     showDetail(it);
+    if (pan && it.lat != null) panIntoView(it);
+  }
+
+  // Keep the user's zoom; only pan when the pin is hidden behind a panel or off screen.
+  function panIntoView(it) {
+    const size = map.getSize();
+    const left = document.querySelector(".sp-side").getBoundingClientRect().right + 20;
+    const d = detail.getBoundingClientRect();
+    const right = d.width && d.left > left ? d.left - 20 : size.x - 20;
+    const top = 40, bottom = d.width && d.left <= left ? d.top - 20 : size.y - 40;  // detail docked at the bottom
+    const pt = map.latLngToContainerPoint([it.lat, it.lon]);
+    if (pt.x >= left && pt.x <= right && pt.y >= top && pt.y <= bottom) return;
+    map.panBy([pt.x - (left + right) / 2, pt.y - (top + bottom) / 2]);
+  }
+  map.on("click", () => select(null));
+  document.addEventListener("keydown", e => { if (e.key === "Escape") select(null); });
+
+  function setHidden(it, on) {
+    on ? hidden.add(it.id) : hidden.delete(it.id);
+    save("hidden", [...hidden]);
+    if (on && it === selected && !showHiddenBox.checked) select(null);
+    render();
+    if (it === selected) showDetail(it);
   }
 
   const detail = document.getElementById("sp-detail");
   function showDetail(it) {
     detail.replaceChildren();
-    const close = el("button", "close", "×");
+    const head = el("div", "sp-dhead");
+    const title = el("div", "title", `#${it.rank} · ${it.address || "location unknown"} · ${it.priceText}`);
+    title.append(el("small", null, [`score ${it.score}`, `${km(it.dist)} from target`, it.vat].filter(Boolean).join(" · ")));
+    const hideBtn = el("button", "sp-btn", hidden.has(it.id) ? "Unhide" : "Hide");
+    hideBtn.onclick = () => setHidden(it, !hidden.has(it.id));
+    const link = el("a", "sp-btn", "imot.bg ↗");
+    link.href = it.url; link.target = "_blank";
+    const close = el("button", "sp-btn close", "×");
+    close.title = "Close (Esc)";
     close.onclick = () => select(null);
-    detail.append(close);
-    const h = el("div");
-    h.append(el("b", null, `#${it.rank} · score ${it.score} · ${it.priceText} ${it.vat}`));
-    if (it.priceDrop) h.append(el("span", "sp-badge", "-" + it.priceDrop));
-    detail.append(h);
-    const lines = [
-      `${it.kind} · ${it.area || "?"} m² · ${it.floor} · ${it.parkingType}`,
-      `${it.address || "location unknown"} · ${km(it.dist)} · location confidence ${it.conf.toFixed(2)}`,
-      `${it.listedHow} ${it.listedAt} (${ago(it.ageDays)}) · first seen by us ${it.firstSeen}`,
-      it.locLabel, it.summary,
-      "Red flags: " + (it.flags.length ? it.flags.join(", ") : "none"),
-    ];
-    lines.forEach(t => t && detail.append(el("div", null, t)));
-    const a = el("a", null, "open on imot.bg");
-    a.href = it.url; a.target = "_blank";
-    detail.append(a);
+    head.append(title, hideBtn, link, close);
+
+    const body = el("div", "sp-dbody");
+    let facts = `${it.kind} · ${it.area || "?"} m² · ${it.floor} · ${it.listedHow} ${it.listedAt} (${ago(it.ageDays)})`;
+    if (it.priceDrop) facts += ` · price dropped by ${it.priceDrop}`;
+    body.append(el("div", "sp-facts", facts));
     if (it.photos.length) {
       const strip = el("div", "sp-photos");
       it.photos.forEach(ph => {
-        const link = el("a");
-        link.href = ph.big; link.target = "_blank";
+        const a = el("a");
+        a.href = ph.big; a.target = "_blank";
         const img = el("img");
         img.src = ph.big; img.loading = "lazy"; img.alt = "photo";
         img.onerror = () => { if (img.src !== ph.thumb) img.src = ph.thumb; };
-        link.append(img);
-        strip.append(link);
+        a.append(img);
+        strip.append(a);
       });
-      detail.append(strip);
+      body.append(strip);
     }
-    detail.append(el("div", "desc", it.description || "(no description)"));
+    body.append(el("div", "sp-desc", it.description || "(no description)"));
+
+    const ai = el("div", "sp-ai");
+    const line = (label, text) => {
+      if (!text) return;
+      const d = el("div");
+      d.append(el("b", null, label + ": "), document.createTextNode(text));
+      ai.append(d);
+    };
+    line("AI summary", it.summary);
+    line("Red flags", it.flags.length ? it.flags.join(", ") : "none");
+    line("Type", it.parkingType);
+    line("Location guess", `${it.locLabel} (confidence ${it.conf.toFixed(2)})`);
+    line("First seen by us", it.firstSeen);
+    body.append(ai);
+
+    detail.append(head, body);
     detail.classList.add("open");
-    detail.scrollTop = 0;
+    body.scrollTop = 0;
   }
 
   const list = document.getElementById("sp-list");
   const sortSel = document.getElementById("sp-sort");
+  const distSel = document.getElementById("sp-dist");
   const freshBox = document.getElementById("sp-fresh");
+  const showHiddenBox = document.getElementById("sp-showhidden");
   const sorters = {
     score: (a, b) => a.rank - b.rank,
     date: (a, b) => a.ageDays - b.ageDays,
     price: (a, b) => (a.price || 1e12) - (b.price || 1e12),
     dist: (a, b) => (a.dist ?? 1e12) - (b.dist ?? 1e12),
   };
+  const view = load("view", {});
+  if (view.sort in sorters) sortSel.value = view.sort;
+  if ([...distSel.options].some(o => o.value === view.maxDist)) distSel.value = view.maxDist;
+  freshBox.checked = !!view.fresh;
+  showHiddenBox.checked = !!view.showHidden;
 
   function render() {
-    const shown = DATA.filter(it => !freshBox.checked || it.fresh).sort(sorters[sortSel.value]);
+    save("view", {sort: sortSel.value, maxDist: distSel.value, fresh: freshBox.checked,
+                  showHidden: showHiddenBox.checked});
+    const maxDist = distSel.value ? +distSel.value : null;
+    const shown = DATA.filter(it => (!freshBox.checked || it.fresh)
+                                   && (maxDist == null || (it.dist != null && it.dist <= maxDist))
+                                   && (showHiddenBox.checked || !hidden.has(it.id)))
+                      .sort(sorters[sortSel.value]);
+    const nHidden = DATA.filter(it => hidden.has(it.id)).length;
     document.getElementById("sp-count").textContent = `(${shown.length}/${DATA.length})`;
-    list.replaceChildren();
+    document.getElementById("sp-nhidden").textContent = nHidden;
     const visible = new Set(shown);
-    DATA.forEach(it => {
-      const pin = it.marker && it.marker.getElement() && it.marker.getElement().firstChild;
-      if (pin) pin.classList.toggle("dim", !visible.has(it));
-    });
+    DATA.forEach(it => setOnMap(it, visible.has(it)));
+    if (selected && !visible.has(selected)) select(null);
+
+    list.replaceChildren();
     shown.forEach(it => {
-      const r = el("div", "sp-row" + (it.lat == null ? " unloc" : "") + (it === selected ? " sel" : ""));
+      const isHidden = hidden.has(it.id);
+      const r = el("div", "sp-row" + (it.lat == null ? " unloc" : "") + (it === selected ? " sel" : "")
+                          + (isHidden ? " hidden" : ""));
       r.append(el("span", "rk", "#" + it.rank));
       const sc = el("span", "sc", Math.round(it.score));
       sc.style.color = it.color;
@@ -296,18 +388,23 @@ window.addEventListener("DOMContentLoaded", function () {
       dt.title = `${it.listedHow} ${it.listedAt}`;
       if (it.fresh) dt.append(el("span", "sp-badge fresh", "FRESH"));
       if (it.isNew) dt.append(el("span", "sp-badge", "NEW"));
+      if (isHidden) dt.append(el("span", "sp-badge hid", "HIDDEN"));
       r.append(dt);
       let sub = `${it.priceText} · ${it.area || "?"} m² · ${km(it.dist)} · ${it.kind}`;
       if (it.priceDrop) sub += ` · ↓${it.priceDrop}`;
       r.append(el("span", "sub", sub));
+      const hb = el("button", "hide", isHidden ? "unhide" : "hide");
+      hb.onclick = e => { e.stopPropagation(); setHidden(it, !isHidden); };
+      r.append(hb);
       r.onmouseenter = () => highlight(it, true);
       r.onmouseleave = () => highlight(it, false);
-      r.onclick = () => select(it, true);
+      r.onclick = () => toggle(it, true);
       it.row = r;
       list.append(r);
     });
+    if (selected) highlight(selected, true);
   }
-  sortSel.onchange = freshBox.onchange = render;
+  sortSel.onchange = distSel.onchange = freshBox.onchange = showHiddenBox.onchange = render;
   render();
 });
 """

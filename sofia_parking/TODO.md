@@ -13,10 +13,17 @@
   shown full-size in the map's detail pane, click opens the image)
 - [x] After update step is finished, print how much resources that took, how many curl calls, how many llm calls and how much physical time.
   (`run` ends with a summary: imot.bg / OSM HTTP requests (+ OSM cache hits), LLM calls, tokens and cost, time per step)
-- no easy way to deselect listing, just small x
-- ai listing overview and original listing are small and hard to read, also the original should be the main one and the ai overview a sidenote, might be a good idea to show independently from the list of listings
-- make a way to hide listings and remember the choice
-- option to hide listings with larger distance than 0.5, 1, 1.5, 2km
+- [x] no easy way to deselect listing, just small x
+  (Esc, click an empty spot on the map, click the selected row/pin again, or the big × button)
+- [x] ai listing overview and original listing are small and hard to read, also the original should be the main one and the ai overview a sidenote, might be a good idea to show independently from the list of listings
+  (separate panel next to the list: 15px original text + photos as the main content, AI notes in a grey box below)
+- [x] make a way to hide listings and remember the choice
+  ("hide" on row hover or in the detail panel; remembered in the browser's localStorage, "show hidden" to undo)
+- [x] option to hide listings with larger distance than 0.5, 1, 1.5, 2km
+  ("within" filter; listings with unknown location are hidden while it's on; filters are remembered too)
+- [x] different zoom levels when clicking on listings are distracting, keep the original user zoom
+  (zoom never changes; the map only pans when the pin is hidden behind a panel or off screen)
+- [x] having the listing and overview side by side hides a huge portion of the map, try putting the list on the left of the screen and the overview of the selected item on the right
 
 
 # Suggested
