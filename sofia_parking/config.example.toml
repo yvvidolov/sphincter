@@ -1,0 +1,65 @@
+# Copy to config.toml and adjust. Every key is optional; defaults are shown.
+
+[target]
+address = "ул. <STREET> <NUMBER>, София"
+# Set lat/lon to skip geocoding the target address (recommended once verified).
+# Placeholder: replace with your own address and coordinates.
+# lat = <LAT>
+# lon = <LON>
+
+[scrape]
+list_url = "https://www.imot.bg/obiavi/prodazhbi/grad-sofiya/tsentar/garazh-parkomyasto"
+max_pages = 10
+# Random delay between requests, seconds.
+delay_min = 4.0
+delay_max = 9.0
+user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36"
+# Re-fetch a listing's detail page at most this often even if nothing changed in the list card.
+detail_refresh_days = 30
+
+[llm]
+# "litellm" (any provider/proxy litellm supports) or "claude-cli" (uses the local
+# `claude` CLI, i.e. your Claude subscription).
+backend = "litellm"
+model = "anthropic/claude-sonnet-5-5"
+# For a LiteLLM proxy: model = "openai/<proxy-model-name>", api_base = "http://localhost:4000"
+# api_base = ""
+# Name of the env var holding the key (left empty -> litellm's own env lookup).
+# api_key_env = "LITELLM_API_KEY"
+temperature = 0.0
+# Parallel LLM calls.
+concurrency = 4
+# claude-cli backend only:
+claude_model = "sonnet"
+# Strip Claude Code's own system prompt, tools, MCP servers and settings from each call
+# (~550 instead of ~19k input tokens per listing). See README for the quality comparison.
+claude_lean = true
+claude_extra_args = []
+
+[geocode]
+nominatim_url = "https://nominatim.openstreetmap.org"
+# Tried in order; public mirrors are flaky.
+overpass_url = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+]
+# Contact info is required by the Nominatim usage policy.
+user_agent = "sofia-parking/0.1 (personal use)"
+# Bounding box used to keep results inside central Sofia: south, west, north, east
+bbox = [42.665, 23.290, 42.715, 23.365]
+
+[score]
+# Distance (metres) at which the distance component drops to zero.
+max_distance_m = 2500
+weight_distance = 0.6
+weight_price = 0.3
+weight_confidence = 0.1
+
+[output]
+db_path = "data/parking.sqlite"
+map_path = "data/map.html"
+# Basemap: folium tiles name or URL template (+ attribution for custom URLs).
+# tile.openstreetmap.org blocks pages opened from file:// and CARTO needs an API key.
+tiles = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}"
+tiles_attr = "Tiles &copy; Esri &mdash; Source: Esri, HERE, Garmin, OpenStreetMap contributors"
