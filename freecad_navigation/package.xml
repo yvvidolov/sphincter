@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<package format="1" xmlns="https://wiki.freecad.org/Package_Metadata">
+    <name>Modo Navigation</name>
+    <description>Modo/Blender-style 3D view navigation: Alt+LMB rotate, Alt+Shift+LMB pan, Alt+Ctrl+LMB zoom, wheel zoom. Works with a two-button mouse or a pen tablet.</description>
+    <icon>Resources/icons/ModoNavigation.svg</icon>
+    <version>0.1.0</version>
+    <date>2026-10-28</date>
+    <maintainer email="yavorvvv@gmail.com">Yavor Vidolov</maintainer>
+    <license file="LICENSE">LGPL-2.1-or-later</license>
+    <url type="repository" branch="main">https://github.com/CHANGE_ME/freecad-modo-navigation</url>
+    <url type="bugtracker">https://github.com/CHANGE_ME/freecad-modo-navigation/issues</url>
+    <url type="readme">https://github.com/CHANGE_ME/freecad-modo-navigation/blob/main/README.md</url>
+    <freecadmin>1.0.0</freecadmin>
+    <tag>navigation</tag>
+    <tag>mouse</tag>
+    <tag>modo</tag>
+    <tag>blender</tag>
+    <tag>maya</tag>
+
+    <content>
+        <workbench>
+            <!-- Not a real workbench: declared as one so every FreeCAD version
+                 runs InitGui.py at startup (same trick the Addon Manager uses). -->
+            <name>ModoNavigation</name>
+            <subdirectory>./</subdirectory>
+        </workbench>
+    </content>
+</package>
